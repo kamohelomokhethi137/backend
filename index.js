@@ -10,6 +10,10 @@ const fileRoutes = require('./routes/file');
 const app = express();
 
 // === MIDDLEWARE ===
+app.use(cors({
+  origin: ['https://career-guidance-gilt.vercel.app', 'http://localhost:5173'],
+  credentials: true
+}));
 app.use(cors());
 app.use(express.json());
 
