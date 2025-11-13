@@ -237,6 +237,36 @@ router.get('/users/profile', async (req, res) => {
   }
 });
 
+// Add to your auth routes
+router.post('/test-auth', async (req, res) => {
+  const { email } = req.body;
+  
+  try {
+    // Check if user exists
+    const userRecord = await auth.getUserByEmail(email);
+    
+    // Test generating verification link
+    const verificationLink = await auth.generateEmailVerificationLink(email, {
+      url: `${process.env.FRONTEND_URL}/verify-email?email=${encodeURIComponent(email)}`,
+      handleCodeInApp: true,
+    });
+    
+    res.json({
+      userExists: true,
+      emailVerified: userRecord.emailVerified,
+      verificationLink: verificationLink, // This will show in development
+      canGenerateLink: true
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      error: error.message,
+      code: error.code,
+      userExists: false
+    });
+  }
+});
+
 // -----------------------
 // VERIFY EMAIL (OOB Code)
 // -----------------------
@@ -268,6 +298,39 @@ router.post('/verify-email', async (req, res) => {
     };
     const message = errorMessages[error.code] || 'Email verification failed.';
     res.status(400).json({ error: message });
+  }
+});
+
+// GET USER ROLE — PRO ENDPOINT
+router.get('/role', async (req, res) => {
+  const token = req.headers.authorization?.split('Bearer ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: "No token" });
+  }
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    const uid = decoded.uid;
+
+    const userDoc = await admin.firestore().collection("users").doc(uid).get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const role = userDoc.data().role || "student";
+
+    res.json({ 
+      success: true,
+      role: role,
+      uid: uid,
+      name: userDoc.data().fullName || userDoc.data().institutionName
+    });
+
+  } catch (err) {
+    console.error("Role check error:", err);
+    res.status(401).json({ error: "Invalid token" });
   }
 });
 

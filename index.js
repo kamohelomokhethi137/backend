@@ -6,30 +6,35 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const fileRoutes = require('./routes/file');
+const coursesRoutes = require('./routes/courses');
 
-const app = express();
+const app = express(); // <--- initialize first
 
 // === MIDDLEWARE ===
 app.use(cors({
   origin: ['https://career-guidance-gilt.vercel.app', 'http://localhost:5173'],
   credentials: true
 }));
-app.use(cors());
 app.use(express.json());
 
-// === PARSE SERVICE ACCOUNT SAFELY ===
-let serviceAccount = null;
-try {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (raw && raw.trim().startsWith('{')) {
-    serviceAccount = JSON.parse(raw);
-  }
-} catch (err) {
-  console.warn('Warning: Invalid FIREBASE_SERVICE_ACCOUNT in .env');
-}
+// Mount routes
+app.use('/api', coursesRoutes);
+app.use('/auth', authRoutes);
+app.use('/users', userRoutes);
+app.use('/file', fileRoutes);
 
 // === HEALTH CHECK ===
 app.get('/', (req, res) => {
+  let serviceAccount = null;
+  try {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (raw && raw.trim().startsWith('{')) {
+      serviceAccount = JSON.parse(raw);
+    }
+  } catch (err) {
+    console.warn('Warning: Invalid FIREBASE_SERVICE_ACCOUNT in .env');
+  }
+
   res.json({
     message: 'CareerGuide Backend Running',
     timestamp: new Date().toISOString(),
@@ -45,12 +50,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// === MOUNT ROUTES ===
-app.use('/auth', authRoutes);
-app.use('/users', userRoutes);
-app.use('/file', fileRoutes);
-
-// === 404 HANDLER - CORRECTED ===
+// === 404 HANDLER ===
 app.use((req, res) => {
   res.status(404).json({ 
     error: 'Route not found', 
@@ -79,7 +79,7 @@ app.listen(PORT, () => {
   console.log(`\nCareerGuide Backend LIVE`);
   console.log(`==============================`);
   console.log(`URL: http://localhost:${PORT}`);
-  console.log(`Project: ${serviceAccount?.project_id || 'unknown'}`);
+  console.log(`Project: ${process.env.FIREBASE_PROJECT_ID || 'unknown'}`);
   console.log(`Email: ${process.env.EMAIL_USER || 'not set'}`);
   console.log(`Env: ${process.env.NODE_ENV || 'development'}`);
   console.log(`==============================\n`);
