@@ -3,10 +3,6 @@ const router = express.Router();
 const { db, auth, admin } = require('../config/firebase');
 const { sendVerificationEmail } = require('../utils/email');
 const fetch = require('node-fetch');
-
-// -----------------------
-// REGISTER
-// -----------------------
 router.post('/register', async (req, res) => {
   if (!req.body) {
     return res.status(400).json({ error: 'Request body is missing' });
@@ -22,7 +18,7 @@ router.post('/register', async (req, res) => {
   }
 
   try {
-    // 1. Create Firebase Auth user
+  
     const userRecord = await auth.createUser({
       email,
       password,
@@ -31,7 +27,7 @@ router.post('/register', async (req, res) => {
       emailVerified: false,
     });
 
-    // 2. Save to Firestore
+    //  Save to Firestore
     await db.collection('users').doc(userRecord.uid).set({
       email,
       fullName,
@@ -42,17 +38,17 @@ router.post('/register', async (req, res) => {
       emailVerified: false,
     });
 
-    // 3. Generate verification link
+    // Generate verification link
     const actionCodeSettings = {
       url: `${process.env.FRONTEND_URL}/verify-email?email=${encodeURIComponent(email)}&role=${role}`,
       handleCodeInApp: true,
     };
     const verificationLink = await auth.generateEmailVerificationLink(email, actionCodeSettings);
 
-    // 4. Send email
+    // Send email
     const emailResult = await sendVerificationEmail(email, verificationLink, fullName, role);
 
-    // 5. Response
+    //  Response
     const response = {
       message: 'Account created! Please check your email to verify.',
       uid: userRecord.uid,
@@ -78,9 +74,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// -----------------------
-// LOGIN
-// -----------------------
+
 router.post('/login', async (req, res) => {
   if (!req.body) {
     return res.status(400).json({ error: 'Request body is missing' });
@@ -156,9 +150,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// -----------------------
-// REFRESH TOKEN
-// -----------------------
+
 router.post('/refresh-token', async (req, res) => {
   const { uid } = req.body;
   if (!uid) return res.status(400).json({ error: 'UID required' });
@@ -176,9 +168,7 @@ router.post('/refresh-token', async (req, res) => {
   }
 });
 
-// -----------------------
-// CHECK VERIFICATION (for polling)
-// -----------------------
+
 router.post('/check-verification', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
@@ -191,9 +181,7 @@ router.post('/check-verification', async (req, res) => {
   }
 });
 
-// -----------------------
-// RESEND VERIFICATION EMAIL
-// -----------------------
+
 router.post('/resend-verification', async (req, res) => {
   const { email, role } = req.body;
   if (!email || !role) return res.status(400).json({ error: 'Email and role required' });
@@ -212,9 +200,7 @@ router.post('/resend-verification', async (req, res) => {
   }
 });
 
-// -----------------------
-// USER PROFILE (for VerifyEmail.jsx)
-// -----------------------
+
 router.get('/users/profile', async (req, res) => {
   // This assumes you have verifyFirebaseToken middleware
   // If not, add it: router.use(verifyFirebaseToken);
@@ -237,7 +223,7 @@ router.get('/users/profile', async (req, res) => {
   }
 });
 
-// Add to your auth routes
+
 router.post('/test-auth', async (req, res) => {
   const { email } = req.body;
   
@@ -254,7 +240,7 @@ router.post('/test-auth', async (req, res) => {
     res.json({
       userExists: true,
       emailVerified: userRecord.emailVerified,
-      verificationLink: verificationLink, // This will show in development
+      verificationLink: verificationLink, 
       canGenerateLink: true
     });
     
@@ -267,9 +253,7 @@ router.post('/test-auth', async (req, res) => {
   }
 });
 
-// -----------------------
-// VERIFY EMAIL (OOB Code)
-// -----------------------
+
 router.post('/verify-email', async (req, res) => {
   const { oobCode } = req.body;
   if (!oobCode) return res.status(400).json({ error: 'Verification code is required' });
@@ -301,7 +285,7 @@ router.post('/verify-email', async (req, res) => {
   }
 });
 
-// GET USER ROLE — PRO ENDPOINT
+
 router.get('/role', async (req, res) => {
   const token = req.headers.authorization?.split('Bearer ')[1];
   

@@ -2,13 +2,13 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
-// === IMPORT ROUTES ===
+
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const fileRoutes = require('./routes/file');
 const coursesRoutes = require('./routes/courses');
 
-const app = express(); // <--- initialize first
+const app = express(); 
 
 // === MIDDLEWARE ===
 app.use(cors({
@@ -72,7 +72,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// === START SERVER ===
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

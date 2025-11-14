@@ -4,9 +4,7 @@ const { db, admin } = require('../config/firebase');
 const { verifyFirebaseToken: verifyToken } = require('../middleware/auth');
 
 
-// -----------------------
-// GET ALL COURSES FOR INSTITUTE
-// -----------------------
+
 router.get('/courses', verifyToken, async (req, res) => {
   const uid = req.user.uid;
 
@@ -25,9 +23,7 @@ router.get('/courses', verifyToken, async (req, res) => {
   }
 });
 
-// -----------------------
-// ADD COURSE
-// -----------------------
+
 router.post('/courses', verifyToken, async (req, res) => {
   const uid = req.user.uid;
   const { name, faculty, duration, intake } = req.body;
@@ -55,9 +51,7 @@ router.post('/courses', verifyToken, async (req, res) => {
   }
 });
 
-// -----------------------
-// UPDATE COURSE
-// -----------------------
+
 router.put('/courses/:id', verifyToken, async (req, res) => {
   const uid = req.user.uid;
   const { id } = req.params;
@@ -89,9 +83,6 @@ router.put('/courses/:id', verifyToken, async (req, res) => {
   }
 });
 
-// -----------------------
-// DELETE COURSE
-// -----------------------
 router.delete('/courses/:id', verifyToken, async (req, res) => {
   const uid = req.user.uid;
   const { id } = req.params;
