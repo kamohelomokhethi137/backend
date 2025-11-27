@@ -1,5 +1,4 @@
-// utils/email.js
-const transporter = require('../config/nodemailer');
+const { sendEmail } = require('../config/sendgrid');
 
 const sendVerificationEmail = async (email, link, name, role) => {
   const roleText = { student: 'Student', institute: 'Institution', company: 'Company' }[role] || role;
@@ -29,16 +28,19 @@ const sendVerificationEmail = async (email, link, name, role) => {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"CareerGuide LESOTHO" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Verify Your Email - CareerGuide LESOTHO',
-      html,
-    });
-    console.log(`Email sent to ${email}: ${info.messageId}`);
-    return { success: true };
+    // Ensure text fallback is not empty
+    const textFallback = `Hello ${name}, please verify your ${roleText} account using this link: ${link}`;
+    const result = await sendEmail(email, 'Verify Your Email - CareerGuide LESOTHO', textFallback, html);
+
+    if (!result.success) {
+      console.error(`SendGrid error for ${email}:`, result.error);
+    } else {
+      console.log(`Verification email sent to ${email}`);
+    }
+
+    return result;
   } catch (err) {
-    console.error(`Email failed to ${email}:`, err.message);
+    console.error(`Failed to send verification email to ${email}:`, err.message);
     return { success: false, error: err.message };
   }
 };
