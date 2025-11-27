@@ -12,7 +12,7 @@ const app = express();
 
 // === MIDDLEWARE ===
 app.use(cors({
-  origin: ['https://career-guidance-gilt.vercel.app', 'http://localhost:5173'],
+  origin: ['https://career-guidance-gilt.vercel.app', 'http://localhost:5173', 'https://career-guidance-gilt.vercel.app/'],
   credentials: true
 }));
 app.use(express.json());
