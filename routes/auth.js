@@ -1,24 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const { db, auth, admin } = require('../config/firebase');
-const { sendVerificationEmail } = require('../utils/email');
+const { sendEmail, SENDER_EMAIL } = require('../config/sendgrid');
 const fetch = require('node-fetch');
+
+// ─────────────────────── REGISTER ───────────────────────
 router.post('/register', async (req, res) => {
-  if (!req.body) {
-    return res.status(400).json({ error: 'Request body is missing' });
-  }
+  if (!req.body) return res.status(400).json({ error: 'Request body is missing' });
 
   const { email, password, fullName, role, phone, institutionName } = req.body;
 
-  if (!email || !password || !fullName || !role) {
+  if (!email || !password || !fullName || !role)
     return res.status(400).json({ error: 'Email, password, fullName, and role are required' });
-  }
-  if (password.length < 6) {
+  if (password.length < 6)
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
 
   try {
-  
     const userRecord = await auth.createUser({
       email,
       password,
@@ -27,7 +24,6 @@ router.post('/register', async (req, res) => {
       emailVerified: false,
     });
 
-    //  Save to Firestore
     await db.collection('users').doc(userRecord.uid).set({
       email,
       fullName,
@@ -38,64 +34,71 @@ router.post('/register', async (req, res) => {
       emailVerified: false,
     });
 
-    // Generate verification link
     const actionCodeSettings = {
       url: `${process.env.FRONTEND_URL}/verify-email?email=${encodeURIComponent(email)}&role=${role}`,
       handleCodeInApp: true,
     };
     const verificationLink = await auth.generateEmailVerificationLink(email, actionCodeSettings);
 
-    // Send email
-    const emailResult = await sendVerificationEmail(email, verificationLink, fullName, role);
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto; border:1px solid #eee;">
+        <div style="background:#000; color:#fff; padding:30px; text-align:center;">
+          <h1>CareerGuide LESOTHO</h1>
+          <p>Email Verification Required</p>
+        </div>
+        <div style="padding:30px; background:#f9f9f9;">
+          <h2>Welcome, ${fullName}!</h2>
+          <p>You registered as a <strong>${role}</strong>.</p>
+          <p>Click below to verify your email:</p>
+          <div style="text-align:center; margin:20px 0;">
+            <a href="${verificationLink}" style="background:#000; color:#fff; padding:14px 35px; text-decoration:none; border-radius:8px; font-weight:bold;">Verify Email</a>
+          </div>
+          <p>Or copy this link: <code style="background:#eee; padding:10px; font-size:12px; word-break:break-all;">${verificationLink}</code></p>
+          <p><strong>Expires in 24 hours.</strong></p>
+        </div>
+        <div style="text-align:center; padding:20px; color:#666; font-size:12px;">
+          &copy; ${new Date().getFullYear()} CareerGuide LESOTHO<br>
+          Maseru, Lesotho<br>
+          Contact: ${SENDER_EMAIL}
+        </div>
+      </div>
+    `;
 
-    //  Response
+    const textFallback = `Hello ${fullName}, please verify your ${role} account using this link: ${verificationLink}`;
+    await sendEmail(email, 'Verify Your Email - CareerGuide LESOTHO', textFallback, emailHtml);
+
     const response = {
       message: 'Account created! Please check your email to verify.',
       uid: userRecord.uid,
       role,
-      emailSent: emailResult.success,
+      emailSent: true,
     };
 
     if (process.env.NODE_ENV === 'development') {
       response.verificationLink = verificationLink;
     }
 
-    if (!emailResult.success) {
-      response.note = 'Email failed to send. Contact support.';
-    }
-
     res.status(201).json(response);
   } catch (error) {
     console.error('Register error:', error);
-    if (error.code) {
-      return res.status(400).json({ error: error.message });
-    }
-    res.status(500).json({ error: 'Registration failed' });
+    const status = error.code ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Registration failed' });
   }
 });
 
-
+// ─────────────────────── LOGIN ───────────────────────
 router.post('/login', async (req, res) => {
-  if (!req.body) {
-    return res.status(400).json({ error: 'Request body is missing' });
-  }
+  if (!req.body) return res.status(400).json({ error: 'Request body is missing' });
 
   const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
   try {
     const firebaseUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${process.env.FIREBASE_API_KEY}`;
     const resp = await fetch(firebaseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        password,
-        returnSecureToken: true,
-      }),
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
     });
 
     const data = await resp.json();
@@ -108,22 +111,16 @@ router.post('/login', async (req, res) => {
     }
 
     const { localId: uid, idToken } = data;
-
-    // Check email verification
     const adminUser = await auth.getUser(uid);
-    if (!adminUser.emailVerified) {
-      return res.status(403).json({ error: 'Please verify your email before logging in.' });
-    }
 
-    // Get user from Firestore
+    if (!adminUser.emailVerified)
+      return res.status(403).json({ error: 'Please verify your email before logging in.' });
+
     const userSnap = await db.collection('users').doc(uid).get();
-    if (!userSnap.exists) {
-      return res.status(404).json({ error: 'User profile not found' });
-    }
+    if (!userSnap.exists) return res.status(404).json({ error: 'User profile not found' });
 
     const userData = userSnap.data();
 
-    // Sync Firestore
     if (!userData.emailVerified) {
       await db.collection('users').doc(uid).update({
         emailVerified: true,
@@ -150,40 +147,9 @@ router.post('/login', async (req, res) => {
   }
 });
 
-
-router.post('/refresh-token', async (req, res) => {
-  const { uid } = req.body;
-  if (!uid) return res.status(400).json({ error: 'UID required' });
-
-  try {
-    const user = await auth.getUser(uid);
-    if (!user.emailVerified) {
-      return res.status(403).json({ error: 'Email not verified' });
-    }
-    const token = await auth.createCustomToken(uid);
-    res.json({ token });
-  } catch (err) {
-    console.error('Token refresh error:', err);
-    res.status(500).json({ error: 'Token refresh failed' });
-  }
-});
-
-
-router.post('/check-verification', async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email required' });
-
-  try {
-    const user = await auth.getUserByEmail(email);
-    res.json({ verified: user.emailVerified });
-  } catch (err) {
-    res.status(400).json({ verified: false });
-  }
-});
-
-
+// ─────────────────────── RESEND VERIFICATION ───────────────────────
 router.post('/resend-verification', async (req, res) => {
-  const { email, role } = req.body;
+  const { email, role, fullName } = req.body;
   if (!email || !role) return res.status(400).json({ error: 'Email and role required' });
 
   try {
@@ -192,129 +158,47 @@ router.post('/resend-verification', async (req, res) => {
       handleCodeInApp: true,
     };
     const link = await auth.generateEmailVerificationLink(email, actionCodeSettings);
-    const result = await sendVerificationEmail(email, link, "User", role);
-    res.json({ success: result.success });
+
+    const emailHtml = `
+      <p>Hello ${fullName || 'User'},</p>
+      <p>Please verify your ${role} account by clicking the link below:</p>
+      <a href="${link}" style="padding:10px 20px; background:#000; color:#fff; text-decoration:none; border-radius:5px;">Verify Email</a>
+      <p style="font-size:12px; color:#666;">&copy; ${new Date().getFullYear()} CareerGuide LESOTHO | Maseru, Lesotho | Contact: ${SENDER_EMAIL}</p>
+    `;
+
+    const textFallback = `Hello ${fullName || 'User'}, please verify your ${role} account using this link: ${link}`;
+    await sendEmail(email, 'Verify Your Email - CareerGuide LESOTHO', textFallback, emailHtml);
+
+    res.json({ success: true });
   } catch (err) {
-    console.error('Resend error:', err);
+    console.error('Resend verification error:', err);
     res.status(500).json({ error: 'Failed to resend email' });
   }
 });
 
-
-router.get('/users/profile', async (req, res) => {
-  // This assumes you have verifyFirebaseToken middleware
-  // If not, add it: router.use(verifyFirebaseToken);
-  const uid = req.user?.uid;
-  if (!uid) return res.status(401).json({ error: 'Unauthorized' });
-
-  try {
-    const snap = await db.collection('users').doc(uid).get();
-    if (!snap.exists) return res.status(404).json({ error: 'Profile not found' });
-
-    const data = snap.data();
-    res.json({
-      fullName: data.fullName || data.name,
-      email: data.email,
-      role: data.role,
-    });
-  } catch (err) {
-    console.error('Profile fetch error:', err);
-    res.status(500).json({ error: 'Failed to fetch profile' });
-  }
-});
-
-
-router.post('/test-auth', async (req, res) => {
+// ─────────────────────── CHECK VERIFICATION ───────────────────────
+router.post('/check-verification', async (req, res) => {
   const { email } = req.body;
-  
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
   try {
-    // Check if user exists
     const userRecord = await auth.getUserByEmail(email);
-    
-    // Test generating verification link
-    const verificationLink = await auth.generateEmailVerificationLink(email, {
-      url: `${process.env.FRONTEND_URL}/verify-email?email=${encodeURIComponent(email)}`,
-      handleCodeInApp: true,
-    });
-    
-    res.json({
-      userExists: true,
-      emailVerified: userRecord.emailVerified,
-      verificationLink: verificationLink, 
-      canGenerateLink: true
-    });
-    
-  } catch (error) {
-    res.status(500).json({
-      error: error.message,
-      code: error.code,
-      userExists: false
-    });
-  }
-});
+    const emailVerified = userRecord.emailVerified;
 
+    const userSnap = await db.collection('users').doc(userRecord.uid).get();
+    let role = 'student';
+    let fullName = userRecord.displayName || '';
 
-router.post('/verify-email', async (req, res) => {
-  const { oobCode } = req.body;
-  if (!oobCode) return res.status(400).json({ error: 'Verification code is required' });
-
-  try {
-    const email = await auth.applyActionCode(oobCode);
-    const userRecord = await auth.getUserByEmail(email);
-
-    await db.collection('users').doc(userRecord.uid).update({
-      emailVerified: true,
-      emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    res.json({
-      message: 'Email verified successfully!',
-      uid: userRecord.uid,
-      email: userRecord.email,
-    });
-  } catch (error) {
-    console.error('Email verification error:', error);
-    const errorMessages = {
-      'auth/expired-action-code': 'Verification link has expired.',
-      'auth/invalid-action-code': 'Invalid or already used link.',
-      'auth/user-disabled': 'Account disabled.',
-      'auth/user-not-found': 'No account found.',
-    };
-    const message = errorMessages[error.code] || 'Email verification failed.';
-    res.status(400).json({ error: message });
-  }
-});
-
-
-router.get('/role', async (req, res) => {
-  const token = req.headers.authorization?.split('Bearer ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ error: "No token" });
-  }
-
-  try {
-    const decoded = await admin.auth().verifyIdToken(token);
-    const uid = decoded.uid;
-
-    const userDoc = await admin.firestore().collection("users").doc(uid).get();
-
-    if (!userDoc.exists) {
-      return res.status(404).json({ error: "User not found" });
+    if (userSnap.exists) {
+      const data = userSnap.data();
+      role = data.role || role;
+      fullName = data.fullName || fullName;
     }
 
-    const role = userDoc.data().role || "student";
-
-    res.json({ 
-      success: true,
-      role: role,
-      uid: uid,
-      name: userDoc.data().fullName || userDoc.data().institutionName
-    });
-
+    res.json({ verified: emailVerified, role, fullName });
   } catch (err) {
-    console.error("Role check error:", err);
-    res.status(401).json({ error: "Invalid token" });
+    console.error('Check verification error:', err);
+    res.status(500).json({ error: 'Failed to check verification' });
   }
 });
 
